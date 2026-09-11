@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -167,32 +168,20 @@ public:
     }
 
     uint8_t read8(uint8_t reg) const {
-        uint8_t value = 0;
-        if (write(fd_, &reg, 1) != 1) {
-            throw_errno("No se puede escribir registro I2C");
-        }
-        if (::read(fd_, &value, 1) != 1) {
-            throw_errno("No se puede leer registro I2C");
-        }
-        return value;
+        return smbus_read_byte_data(reg);
     }
 
     std::vector<uint8_t> read(uint8_t reg, size_t count) const {
-        std::vector<uint8_t> values(count, 0);
-        if (write(fd_, &reg, 1) != 1) {
-            throw_errno("No se puede escribir registro I2C");
-        }
-        if (::read(fd_, values.data(), count) != static_cast<ssize_t>(count)) {
-            throw_errno("No se puede leer bloque I2C");
+        std::vector<uint8_t> values;
+        values.reserve(count);
+        for (size_t offset = 0; offset < count; ++offset) {
+            values.push_back(read8(static_cast<uint8_t>(reg + offset)));
         }
         return values;
     }
 
     void write8(uint8_t reg, uint8_t value) const {
-        uint8_t data[2] = {reg, value};
-        if (write(fd_, data, 2) != 2) {
-            throw_errno("No se puede escribir registro I2C");
-        }
+        smbus_write_byte_data(reg, value);
     }
 
     const std::string &bus_path() const { return bus_path_; }
@@ -209,6 +198,29 @@ private:
             << std::setfill('0') << static_cast<int>(address_) << "): " << std::strerror(errno);
         throw std::runtime_error(out.str());
     }
+
+    void smbus_access(char read_write, uint8_t command, int size, i2c_smbus_data *data) const {
+        i2c_smbus_ioctl_data args{};
+        args.read_write = read_write;
+        args.command = command;
+        args.size = size;
+        args.data = data;
+        if (ioctl(fd_, I2C_SMBUS, &args) < 0) {
+            throw_errno("Fallo SMBus/I2C");
+        }
+    }
+
+    uint8_t smbus_read_byte_data(uint8_t command) const {
+        i2c_smbus_data data{};
+        smbus_access(I2C_SMBUS_READ, command, I2C_SMBUS_BYTE_DATA, &data);
+        return data.byte;
+    }
+
+    void smbus_write_byte_data(uint8_t command, uint8_t value) const {
+        i2c_smbus_data data{};
+        data.byte = value;
+        smbus_access(I2C_SMBUS_WRITE, command, I2C_SMBUS_BYTE_DATA, &data);
+    }
 };
 
 class Mma845x {
@@ -219,7 +231,7 @@ public:
         uint8_t ctrl1 = device_.read8(REG_CTRL_REG1);
         device_.write8(REG_CTRL_REG1, ctrl1 & ~0x01);  // standby para configurar.
         device_.write8(REG_XYZ_DATA_CFG, 0x00);        // ±2 g.
-        device_.write8(REG_CTRL_REG2, 0x40);           // auto-sleep desactivado; reset suave no necesario.
+        device_.write8(REG_CTRL_REG2, 0x00);           // auto-sleep y reset desactivados.
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         device_.write8(REG_CTRL_REG1, 0x19);           // activo, ODR 100 Hz, low-noise.
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
