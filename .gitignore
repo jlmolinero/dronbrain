@@ -31,4 +31,5 @@
 *.out
 *.app
 spl06_altimeter
+mma845x_inclinometer
 build/

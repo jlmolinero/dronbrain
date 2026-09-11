@@ -2,15 +2,17 @@ CXX ?= g++
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wpedantic -O2
 LDFLAGS ?=
 
-TARGET := spl06_altimeter
-SRC := src/spl06_altimeter.cpp
+TARGETS := spl06_altimeter mma845x_inclinometer
 
 .PHONY: all clean
 
-all: $(TARGET)
+all: $(TARGETS)
 
-$(TARGET): $(SRC)
+spl06_altimeter: src/spl06_altimeter.cpp
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
+
+mma845x_inclinometer: src/mma845x_inclinometer.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS)
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGETS)
